@@ -24,12 +24,14 @@ public class OrderTest {
         assertEquals(5.0, o.getRemainingQty(), 0.001);
     }
 
+
     @Test void testMarketOrderCreation() {
         MarketOrder o = new MarketOrder(1, trader, AssetType.COAL, OrderSide.SELL, 20.0);
         assertEquals("MARKET", o.getOrderType());
         assertTrue(o.canMatchAt(0.0));
         assertTrue(o.canMatchAt(999999.0));
     }
+
 
     @Test void testLimitBuyCanMatchAt() {
         LimitOrder buy = new LimitOrder(1, trader, AssetType.ELECTRICITY, OrderSide.BUY, 10.0, 150.0);
