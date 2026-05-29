@@ -1,4 +1,4 @@
 package za.co.eliteproject.enums;
 
-public class AssetType {
+public enum AssetType {
 }
