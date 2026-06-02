@@ -1,12 +1,17 @@
 package za.co.eliteproject.enums;
 
 public enum CircuitBreakerState {
-    PENDING, PARTIAL, FILLED, CANCELLED, REJECTED;
+    CLOSED, OPEN, TESTING;
 
-    public boolean isTerminal() {
+    public boolean allowsTrading() {
         switch (this) {
-            case FILLED, CANCELLED, REJECTED -> true;
-            default false;
+            // Chain similar logic
+            case CLOSED:
+            case TESTING:
+                return true;
+            case OPEN:
+                return false;
         }
+        return false;
     }
 }

@@ -1,5 +1,7 @@
 package za.co.eliteproject.model;
 
+import za.co.eliteproject.enums.AssetType;
+
 import java.util.*;
 
 public class Portfolio {

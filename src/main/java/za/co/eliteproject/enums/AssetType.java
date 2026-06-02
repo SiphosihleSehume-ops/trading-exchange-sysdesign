@@ -1,16 +1,17 @@
 package za.co.eliteproject.enums;
 
 public enum AssetType {
-    public String label;
 
-    ELECTRICITY, GAS, CARBON, COAL;
+    ELECTRICITY("Electricity"), GAS("Natural gas"), CARBON("Carbon"), COAL("Coal");
+
+    private final String label;
 
 
-    public AssetType(String label) {
+    AssetType(String label) {
         this.label = getLabel();
     }
 
-    public AssetType getLabel() {
-        //
+    public String getLabel() {
+        return label;
     }
 }

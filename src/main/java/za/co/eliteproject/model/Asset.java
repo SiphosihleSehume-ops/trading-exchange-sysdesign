@@ -1,5 +1,7 @@
 package za.co.eliteproject.model;
 
+import za.co.eliteproject.enums.AssetType;
+
 public class Asset {
     private AssetType assetType;
     private double quantity;
@@ -15,7 +17,7 @@ public class Asset {
         return assetType;
     }
 
-    public double getQuanity() {
+    public double getQuantity() {
         return quantity;
     }
 
@@ -41,11 +43,16 @@ public class Asset {
         return quantity * currentPrice;
     } 
 
-    public getUnrealisedPnL(double currentPrice) {
+    public double getUnrealisedPnL(double currentPrice) {
         return (currentPrice * avgCost) * quantity;
     }
 
-    @Override String toString() {
-        // Generate using IntelliJ
+    @Override
+    public String toString() {
+        return "Asset{" +
+                "assetType=" + assetType +
+                ", quantity=" + quantity +
+                ", avgCost=" + avgCost +
+                '}';
     }
 }
