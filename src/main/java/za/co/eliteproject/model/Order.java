@@ -33,23 +33,38 @@ public abstract class Order {
   }
 
   public AssetType getAssetType() {
+    return assetType;
   }
 
   public OrderSide getOrderSide() {
+    return order;
   }
 
   public double getQuantity() {
+    return quantity;
   }
 
   public double getFilledQty() {
+    return filledQty;
   }
 
   public double getRemainingQty() {
   }
 
   public OrderStatus status() {
+    return status;
   }
 
   public long getTimeStamp() {
+  }
+
+  public void cancel() {
+  }
+
+  public void reject() {
+  }
+
+  @Override 
+  public String toString() {
   }
 }
