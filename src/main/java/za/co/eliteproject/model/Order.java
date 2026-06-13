@@ -29,4 +29,27 @@ public abstract class Order {
   public int getOrderType() {
     
   }
+  public Trader getTrader() {
+  }
+
+  public AssetType getAssetType() {
+  }
+
+  public OrderSide getOrderSide() {
+  }
+
+  public double getQuantity() {
+  }
+
+  public double getFilledQty() {
+  }
+
+  public double getRemainingQty() {
+  }
+
+  public OrderStatus status() {
+  }
+
+  public long getTimeStamp() {
+  }
 }
