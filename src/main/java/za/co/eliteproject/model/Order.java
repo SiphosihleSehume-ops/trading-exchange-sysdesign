@@ -1,6 +1,6 @@
 package za.co.eliteproject.model;
 
-public class Order {
+public abstract class Order {
   protected int orderId;
   protected Trader trader;
   protected AssetType assetType;
@@ -20,5 +20,13 @@ public class Order {
     this.filledQty = 0;
     this.status = OrderStatus.PENDING;
     this.timestamp = System.currentTimeMillis();
+  }
+
+  public abstract String getOrderType();
+
+  public abstract boolean catchMatchAt(double price);
+
+  public int getOrderType() {
+    
   }
 }
