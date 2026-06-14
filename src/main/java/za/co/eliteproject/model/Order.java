@@ -50,6 +50,7 @@ public abstract class Order {
   }
 
   public double getRemainingQty() {
+    return quantity - filledQty;
   }
 
   public OrderStatus status() {
@@ -57,12 +58,15 @@ public abstract class Order {
   }
 
   public long getTimeStamp() {
+    return timestamp;
   }
 
   public void cancel() {
+    this.status = OrderStatus.CANCELLED;
   }
 
   public void reject() {
+    this.status = OrderStatus.REJECTED;
   }
 
   @Override 
