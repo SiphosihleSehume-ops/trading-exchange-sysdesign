@@ -26,10 +26,11 @@ public abstract class Order {
 
   public abstract boolean catchMatchAt(double price);
 
-  public int getOrderType() {
-    
+  public int getOrderId() {
+    return orderId;
   }
   public Trader getTrader() {
+    return trader;
   }
 
   public AssetType getAssetType() {
