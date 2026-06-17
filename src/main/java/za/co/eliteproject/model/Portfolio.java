@@ -91,8 +91,9 @@ public class Portfolio {
             AssetType type = entry.getKey();
             double price = entry.getValue();
 
-            if (prices != null && prices,)
+//            if (prices != null && prices)
         }
+        return 0.0;
     }
 
     @Override

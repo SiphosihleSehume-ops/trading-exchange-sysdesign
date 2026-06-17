@@ -1,5 +1,9 @@
 package za.co.eliteproject.model;
 
+import za.co.eliteproject.enums.AssetType;
+import za.co.eliteproject.enums.OrderSide;
+import za.co.eliteproject.enums.OrderStatus;
+
 public abstract class Order {
   protected int orderId;
   protected Trader trader;
@@ -69,7 +73,17 @@ public abstract class Order {
     this.status = OrderStatus.REJECTED;
   }
 
-  @Override 
+  @Override
   public String toString() {
+    return "Order{" +
+            "orderId=" + orderId +
+            ", trader=" + trader +
+            ", assetType=" + assetType +
+            ", order=" + order +
+            ", quantity=" + quantity +
+            ", filledQty=" + filledQty +
+            ", status=" + status +
+            ", timestamp=" + timestamp +
+            '}';
   }
 }
