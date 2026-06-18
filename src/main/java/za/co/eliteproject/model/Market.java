@@ -2,7 +2,6 @@ package za.co.eliteproject.model;
 
 import za.co.eliteproject.enums.AssetType;
 
-import java.sql.Array;
 import java.util.*;
 
 public class Market {
@@ -60,5 +59,35 @@ public class Market {
     public void recordTrade(TradeRecord record) {
         tradeHistory.add(record);
         //Update trade;
+    }
+
+    public List<Order> getOrders() {
+        return new ArrayList<>(orders);
+    }
+
+    public List<TradeRecord> getTradeHistory() {
+        return new ArrayList<>(tradeHistory);
+    }
+
+    public double getTotalVolume() {
+        //Sum of quantities across all `TradeRecord`s
+        return 0.0;
+    }
+
+    public double getPriceMovement() {
+        return ((lastTradePrice - openingPrice) / openingPrice) * 100;
+    }
+
+    @Override
+    public String toString() {
+        return "Market{" +
+                "marketId='" + marketId + '\'' +
+                ", assetType=" + assetType +
+                ", lastTradePrice=" + lastTradePrice +
+                ", openingPrice=" + openingPrice +
+                ", isOpen=" + isOpen +
+                ", orders=" + orders +
+                ", tradeHistory=" + tradeHistory +
+                '}';
     }
 }
