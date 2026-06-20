@@ -23,7 +23,7 @@ public class Portfolio {
     }
 
     public double getCashBalance() {
-        return reservedCash;
+        return cashBalance;
     }
 
     public double getTotalCash() {
@@ -37,6 +37,13 @@ public class Portfolio {
             return true;
         }
         return false;
+    }
+
+    public void releaseCash(double amount) {
+        if (reservedCash > 0) {
+            reservedCash -= amount;
+            cashBalance +=  amount;
+        }
     }
 
     public boolean deductReservedCash(double amount) {
@@ -85,15 +92,17 @@ public class Portfolio {
     }
 
     public double getTotalValue(Map<AssetType,Double> prices) {
+        //Cash + market value of all assets at given prices
         double totalPrice = getTotalCash();
 
         for (Map.Entry<AssetType, Double> entry : prices.entrySet()) {
-            AssetType type = entry.getKey();
             double price = entry.getValue();
 
-//            if (prices != null && prices)
+            if (price > 0) {
+                totalPrice += price;
+            }
         }
-        return 0.0;
+        return totalPrice;
     }
 
     @Override
