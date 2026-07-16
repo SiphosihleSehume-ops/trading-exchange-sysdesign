@@ -3,6 +3,7 @@ package za.co.eliteproject.model;
 import za.co.eliteproject.enums.AssetType;
 
 public class Asset {
+    
     private AssetType assetType;
     private double quantity;
     private double avgCost;
