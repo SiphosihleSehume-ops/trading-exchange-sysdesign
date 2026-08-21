@@ -6,5 +6,6 @@ public enum AssetType {
     private final String label;
     
     AssetType(String label) {
-        this.label = getLabel();
+        this.label = label;
+    }
 }
