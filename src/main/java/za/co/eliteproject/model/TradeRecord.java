@@ -66,6 +66,11 @@ public final class TradeRecord {
         return timestamp;
     }
 
+    /** @return the traded value: quantity * price. */
+    public double getValue() {
+        return quantity * price;
+    }
+
     @Override
     public String toString() {
         return "TradeRecord{" +
