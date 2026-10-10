@@ -2,22 +2,36 @@ package za.co.eliteproject.model;
 
 import za.co.eliteproject.enums.AssetType;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
 
+/**
+ * A venue for trading a single AssetType.
+ */
 public class Market {
-    private String marketId;
-    private AssetType assetType;
-    private double lastTradePrice;
-    private double openingPrice;
-    private boolean isOpen;
-    private List<Order> orders;
-    private List<TradeRecord> tradeHistory;
 
-    public Market(String marketId, AssetType assetType,  double openingPrice) {
+    private final String marketId;
+    private final AssetType assetType;
+    private double lastTradePrice;
+    private final double openingPrice;
+    private boolean isOpen;
+    private final List<Order> orders;
+    private final List<TradeRecord> tradeHistory;
+
+    public Market(String marketId, AssetType assetType, double openingPrice) {
+        if (marketId == null || marketId.isBlank()) {
+            throw new IllegalArgumentException("Market ID cannot be blank");
+        }
+        if (assetType == null) {
+            throw new IllegalArgumentException("Asset type cannot be null");
+        }
+        if (!(openingPrice > 0)) {
+            throw new IllegalArgumentException("Opening price must be positive");
+        }
         this.marketId = marketId;
         this.assetType = assetType;
-        this.lastTradePrice = lastTradePrice;
         this.openingPrice = openingPrice;
+        this.lastTradePrice = openingPrice;
         this.isOpen = true;
         this.orders = new ArrayList<>();
         this.tradeHistory = new ArrayList<>();
@@ -44,21 +58,31 @@ public class Market {
     }
 
     public void open() {
-        //
+        isOpen = true;
     }
 
     public void close() {
-        //
+        isOpen = false;
     }
 
+    /** Records an order against this market; throws IllegalStateException if the market is closed. */
     public void submitOrder(Order order) {
-        if (!isOpen) throw new IllegalArgumentException();
+        if (order == null) {
+            throw new IllegalArgumentException("Order cannot be null");
+        }
+        if (!isOpen) {
+            throw new IllegalStateException("Market " + marketId + " is closed");
+        }
         orders.add(order);
     }
 
-    public void recordTrade(TradeRecord record) {
-        tradeHistory.add(record);
-        //Update trade;
+    /** Appends the trade and updates lastTradePrice. */
+    public void recordTrade(TradeRecord trade) {
+        if (trade == null) {
+            throw new IllegalArgumentException("Trade cannot be null");
+        }
+        tradeHistory.add(trade);
+        lastTradePrice = trade.getPrice();
     }
 
     public List<Order> getOrders() {
@@ -70,10 +94,14 @@ public class Market {
     }
 
     public double getTotalVolume() {
-        //Sum of quantities across all `TradeRecord`s
-        return 0.0;
+        double volume = 0.0;
+        for (TradeRecord trade : tradeHistory) {
+            volume += trade.getQuantity();
+        }
+        return volume;
     }
 
+    /** @return percentage movement of the last trade price versus the opening price. */
     public double getPriceMovement() {
         return ((lastTradePrice - openingPrice) / openingPrice) * 100;
     }
@@ -86,8 +114,8 @@ public class Market {
                 ", lastTradePrice=" + lastTradePrice +
                 ", openingPrice=" + openingPrice +
                 ", isOpen=" + isOpen +
-                ", orders=" + orders +
-                ", tradeHistory=" + tradeHistory +
+                ", orders=" + orders.size() +
+                ", trades=" + tradeHistory.size() +
                 '}';
     }
 }
