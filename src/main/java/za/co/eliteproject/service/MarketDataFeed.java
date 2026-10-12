@@ -13,17 +13,12 @@ import java.util.List;
  */
 public class MarketDataFeed {
 
-    private final List<MarketObserver> observers;
-    private final HashMap<String, Double> priceCache;
+    private static final double UNKNOWN_PRICE = -1.0;
 
-    public MarketDataFeed() {
-        this.observers = new ArrayList<>();
-        this.priceCache = new HashMap<>();
-    }
+    private final List<MarketObserver> observers = new ArrayList<>();
+    private final HashMap<String, Double> priceCache = new HashMap<>();
 
-    /**
-     * Registers an observer; no duplicates.
-     */
+    /** Registers an observer; duplicates are ignored. */
     public void subscribe(MarketObserver observer) {
         if (observer == null) {
             throw new IllegalArgumentException("Observer cannot be null");
@@ -33,41 +28,42 @@ public class MarketDataFeed {
         }
     }
 
-    /**
-     * @return true if the observer was found and removed.
-     */
+    /** @return true if the observer was found and removed. */
     public boolean unsubscribe(MarketObserver observer) {
         return observers.remove(observer);
     }
 
     public void publishPriceUpdate(String marketId, AssetType assetType, double newPrice) {
-        double previousPrice = priceCache.getOrDefault(marketId, -1.0);
+        double previousPrice = getLastPrice(marketId);
         priceCache.put(marketId, newPrice);
-        for (MarketObserver observer : observers) {
+        for (MarketObserver observer : snapshot()) {
             observer.onPriceUpdate(marketId, assetType, newPrice, previousPrice);
         }
     }
 
     public void publishMarketStatusChange(String marketId, boolean isOpen) {
-        for (MarketObserver observer : observers) {
+        for (MarketObserver observer : snapshot()) {
             observer.onMarketStatusChange(marketId, isOpen);
         }
     }
 
     public void publishTradeExecuted(TradeRecord trade) {
-        for (MarketObserver observer : observers) {
+        for (MarketObserver observer : snapshot()) {
             observer.onTradeExecuted(trade);
         }
     }
 
-    /**
-     * @return the last cached price for the market, or -1 if unknown.
-     */
+    /** @return the last cached price for the market, or -1 if unknown. */
     public double getLastPrice(String marketId) {
-        return priceCache.getOrDefault(marketId, -1.0);
+        return priceCache.getOrDefault(marketId, UNKNOWN_PRICE);
     }
 
     public int getObserverCount() {
         return observers.size();
+    }
+
+    /** Copy so an observer may (un)subscribe from inside a callback without breaking iteration. */
+    private List<MarketObserver> snapshot() {
+        return new ArrayList<>(observers);
     }
 }
