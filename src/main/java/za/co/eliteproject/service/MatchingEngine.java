@@ -9,7 +9,6 @@ import za.co.eliteproject.model.TradeRecord;
 import za.co.eliteproject.strategy.MatchingStrategy;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.PriorityQueue;
@@ -19,108 +18,77 @@ import java.util.PriorityQueue;
  */
 public class MatchingEngine {
 
-    private final HashMap<String, Market> markets;
-    private final HashMap<String, PriorityQueue<LimitOrder>> buyQueues;
-    private final HashMap<String, PriorityQueue<LimitOrder>> sellQueues;
+    private final HashMap<String, Market> markets = new HashMap<>();
+    private final HashMap<String, PriorityQueue<LimitOrder>> buyQueues = new HashMap<>();
+    private final HashMap<String, PriorityQueue<LimitOrder>> sellQueues = new HashMap<>();
     private final RiskEngine riskEngine;
     private MatchingStrategy matchingStrategy;
     private final AuditLog auditLog;
     private final MarketDataFeed dataFeed;
-    private int tradeCounter;
+    private int tradeCounter = 1;
 
     public MatchingEngine(RiskEngine riskEngine, MatchingStrategy strategy, AuditLog auditLog,
-                           MarketDataFeed dataFeed) {
-        this.markets = new HashMap<>();
-        this.buyQueues = new HashMap<>();
-        this.sellQueues = new HashMap<>();
+                          MarketDataFeed dataFeed) {
+        if (riskEngine == null || strategy == null || auditLog == null || dataFeed == null) {
+            throw new IllegalArgumentException("Engine dependencies cannot be null");
+        }
         this.riskEngine = riskEngine;
         this.matchingStrategy = strategy;
         this.auditLog = auditLog;
         this.dataFeed = dataFeed;
-        this.tradeCounter = 1;
     }
 
-    /**
-     * Adds a market; initialises buy/sell queues with the correct Comparator.
-     */
+    /** Adds a market and initialises its buy/sell queues with the side-appropriate Comparator. */
     public void registerMarket(Market market) {
         if (market == null) {
             throw new IllegalArgumentException("Market cannot be null");
         }
         String marketId = market.getMarketId();
         markets.put(marketId, market);
-
-        // Buy queue: higher limit price first; ties resolved by earlier timestamp (ascending).
-        Comparator<LimitOrder> buyComparator = Comparator
-                .comparingDouble(LimitOrder::getLimitPrice).reversed()
-                .thenComparingLong(LimitOrder::getTimestamp);
-        buyQueues.put(marketId, new PriorityQueue<>(buyComparator));
-
-        // Sell queue: lower limit price first; ties resolved by earlier timestamp (ascending).
-        Comparator<LimitOrder> sellComparator = Comparator
-                .comparingDouble(LimitOrder::getLimitPrice)
-                .thenComparingLong(LimitOrder::getTimestamp);
-        sellQueues.put(marketId, new PriorityQueue<>(sellComparator));
+        buyQueues.put(marketId, new PriorityQueue<>(LimitOrder.priorityFor(OrderSide.BUY)));
+        sellQueues.put(marketId, new PriorityQueue<>(LimitOrder.priorityFor(OrderSide.SELL)));
     }
 
     /**
      * Runs risk checks, adds the order to the book, runs matching, and returns generated trades.
+     *
+     * @throws IllegalArgumentException if no market is registered for the order's asset
+     * @throws IllegalStateException    if that market is closed
      */
     public List<TradeRecord> submitOrder(Order order) {
         if (order == null) {
             throw new IllegalArgumentException("Order cannot be null");
         }
-        String marketId = findMarketId(order);
-        Market market = markets.get(marketId);
+        Market market = findMarket(order);
         if (market == null) {
-            throw new IllegalArgumentException("Market not found for order: " + order.getOrderId());
+            throw new IllegalArgumentException("No market registered for " + order.getAssetType());
         }
         if (!market.isOpen()) {
-            throw new IllegalStateException("Market is closed: " + marketId);
+            throw new IllegalStateException("Market is closed: " + market.getMarketId());
         }
 
         if (!riskEngine.evaluate(order, market)) {
-            order.reject();
-            auditLog.log("ORDER_REJECTED", "Order " + order.getOrderId() + " rejected by risk engine");
-            return new ArrayList<>();
+            return rejectOrder(order, "rejected by risk engine");
+        }
+        if (order instanceof LimitOrder limit && order.getSide() == OrderSide.BUY
+                && !order.getTrader().getPortfolio().reserveCash(limit.getQuantity() * limit.getLimitPrice())) {
+            return rejectOrder(order, "rejected: insufficient cash to reserve");
         }
 
-        if (order instanceof LimitOrder && order.getSide() == OrderSide.BUY) {
-            LimitOrder limitOrder = (LimitOrder) order;
-            boolean reserved = order.getTrader().getPortfolio()
-                    .reserveCash(limitOrder.getQuantity() * limitOrder.getLimitPrice());
-            if (!reserved) {
-                order.reject();
-                auditLog.log("ORDER_REJECTED", "Order " + order.getOrderId() + " rejected: insufficient cash to reserve");
-                return new ArrayList<>();
-            }
-        }
-
+        String marketId = market.getMarketId();
         PriorityQueue<LimitOrder> buyQueue = buyQueues.get(marketId);
         PriorityQueue<LimitOrder> sellQueue = sellQueues.get(marketId);
 
-        List<TradeRecord> marketOrderTrades = new ArrayList<>();
-
-        if (order instanceof LimitOrder) {
-            LimitOrder limitOrder = (LimitOrder) order;
-            if (order.getSide() == OrderSide.BUY) {
-                buyQueue.add(limitOrder);
-            } else {
-                sellQueue.add(limitOrder);
-            }
-        } else if (order instanceof MarketOrder) {
-            // MarketOrders match immediately against the opposite book at the resting orders'
-            // limit prices, walking the book until filled or the book is exhausted.
-            marketOrderTrades.addAll(matchMarketOrder((MarketOrder) order,
-                    order.getSide() == OrderSide.BUY ? sellQueue : buyQueue));
+        List<TradeRecord> trades = new ArrayList<>();
+        if (order instanceof LimitOrder limit) {
+            (order.getSide() == OrderSide.BUY ? buyQueue : sellQueue).add(limit);
+        } else if (order instanceof MarketOrder marketOrder) {
+            // Market orders never rest in the book: they match immediately or not at all.
+            trades.addAll(matchMarketOrder(marketOrder, order.getSide() == OrderSide.BUY ? sellQueue : buyQueue));
         }
 
         market.submitOrder(order);
-
-        List<TradeRecord> trades = matchingStrategy.match(buyQueue, sellQueue, tradeCounter + marketOrderTrades.size());
-        List<TradeRecord> allTrades = new ArrayList<>(marketOrderTrades);
-        allTrades.addAll(trades);
-        trades = allTrades;
+        trades.addAll(matchingStrategy.match(buyQueue, sellQueue, tradeCounter + trades.size()));
 
         for (TradeRecord trade : trades) {
             market.recordTrade(trade);
@@ -130,47 +98,14 @@ public class MatchingEngine {
                     + " qty=" + trade.getQuantity() + " price=" + trade.getPrice());
             tradeCounter++;
         }
-
         auditLog.log("ORDER_SUBMITTED", "Order " + order.getOrderId() + " submitted to " + marketId);
 
         return trades;
     }
 
     /**
-     * Matches a MarketOrder immediately against the opposite side's resting LimitOrder book,
-     * walking price levels (best price first, per the queue's natural priority) until the
-     * MarketOrder is filled or the opposite book is exhausted. Execution price is always the
-     * resting LimitOrder's limit price.
-     */
-    private List<TradeRecord> matchMarketOrder(MarketOrder marketOrder, PriorityQueue<LimitOrder> oppositeQueue) {
-        List<TradeRecord> trades = new ArrayList<>();
-        int tradeId = tradeCounter;
-
-        while (marketOrder.getRemainingQty() > 1e-9 && !oppositeQueue.isEmpty()) {
-            LimitOrder resting = oppositeQueue.peek();
-            double executionPrice = resting.getLimitPrice();
-            double matchedQty = Math.min(marketOrder.getRemainingQty(), resting.getRemainingQty());
-
-            marketOrder.fill(matchedQty);
-            resting.fill(matchedQty);
-
-            int buyOrderId = marketOrder.getSide() == OrderSide.BUY ? marketOrder.getOrderId() : resting.getOrderId();
-            int sellOrderId = marketOrder.getSide() == OrderSide.BUY ? resting.getOrderId() : marketOrder.getOrderId();
-
-            trades.add(new TradeRecord(tradeId, buyOrderId, sellOrderId,
-                    marketOrder.getAssetType(), matchedQty, executionPrice));
-            tradeId++;
-
-            if (resting.getRemainingQty() <= 1e-9) {
-                oppositeQueue.poll();
-            }
-        }
-
-        return trades;
-    }
-
-    /**
-     * Cancels an order if found and not terminal; releases reserved cash if it was a BUY LimitOrder.
+     * Cancels a resting order if found and not terminal; releases the cash reserved for an
+     * unfilled BUY LimitOrder.
      */
     public boolean cancelOrder(int orderId, String marketId) {
         PriorityQueue<LimitOrder> buyQueue = buyQueues.get(marketId);
@@ -179,55 +114,36 @@ public class MatchingEngine {
             return false;
         }
 
-        LimitOrder found = null;
-        for (LimitOrder order : buyQueue) {
-            if (order.getOrderId() == orderId) {
-                found = order;
-                break;
-            }
+        PriorityQueue<LimitOrder> book = buyQueue;
+        LimitOrder order = findInQueue(buyQueue, orderId);
+        if (order == null) {
+            book = sellQueue;
+            order = findInQueue(sellQueue, orderId);
         }
-        if (found != null) {
-            buyQueue.remove(found);
-        } else {
-            for (LimitOrder order : sellQueue) {
-                if (order.getOrderId() == orderId) {
-                    found = order;
-                    break;
-                }
-            }
-            if (found != null) {
-                sellQueue.remove(found);
-            }
-        }
-
-        if (found == null || found.getStatus().isTerminal()) {
+        if (order == null || order.getStatus().isTerminal()) {
             return false;
         }
 
-        found.cancel();
-        if (found.getSide() == OrderSide.BUY) {
-            found.getTrader().getPortfolio()
-                    .releaseCash(found.getRemainingQty() * found.getLimitPrice());
+        book.remove(order);
+        order.cancel();
+        if (order.getSide() == OrderSide.BUY) {
+            double unfilledReserve = order.getRemainingQty() * order.getLimitPrice();
+            if (unfilledReserve > 0) {
+                order.getTrader().getPortfolio().releaseCash(unfilledReserve);
+            }
         }
         auditLog.log("ORDER_CANCELLED", "Order " + orderId + " cancelled on " + marketId);
         return true;
     }
 
-    /**
-     * @return a defensive copy of the appropriate queue as a sorted list.
-     */
+    /** @return a defensive copy of the buy or sell book, best-priority first. */
     public List<LimitOrder> getOrderBook(String marketId, OrderSide side) {
-        PriorityQueue<LimitOrder> queue = side == OrderSide.BUY ? buyQueues.get(marketId) : sellQueues.get(marketId);
+        PriorityQueue<LimitOrder> queue = (side == OrderSide.BUY ? buyQueues : sellQueues).get(marketId);
         if (queue == null) {
             return new ArrayList<>();
         }
         List<LimitOrder> copy = new ArrayList<>(queue);
-        Comparator<LimitOrder> comparator = side == OrderSide.BUY
-                ? Comparator.comparingDouble(LimitOrder::getLimitPrice).reversed()
-                        .thenComparingLong(LimitOrder::getTimestamp)
-                : Comparator.comparingDouble(LimitOrder::getLimitPrice)
-                        .thenComparingLong(LimitOrder::getTimestamp);
-        copy.sort(comparator);
+        copy.sort(LimitOrder.priorityFor(side));
         return copy;
     }
 
@@ -239,9 +155,7 @@ public class MatchingEngine {
         return new ArrayList<>(markets.values());
     }
 
-    /**
-     * Swaps the matching strategy at runtime.
-     */
+    /** Swaps the matching strategy at runtime. */
     public void setMatchingStrategy(MatchingStrategy matchingStrategy) {
         if (matchingStrategy == null) {
             throw new IllegalArgumentException("Matching strategy cannot be null");
@@ -250,14 +164,50 @@ public class MatchingEngine {
     }
 
     /**
-     * Determines which market an order belongs to by matching its AssetType.
-     * Since markets are registered per AssetType (one market per asset in typical usage),
-     * this looks up the first market whose assetType matches the order's assetType.
+     * Matches a MarketOrder against the opposite book, best price first, until it is filled or
+     * the book is exhausted. Execution price is each resting order's limit price.
      */
-    private String findMarketId(Order order) {
+    private List<TradeRecord> matchMarketOrder(MarketOrder marketOrder, PriorityQueue<LimitOrder> oppositeQueue) {
+        List<TradeRecord> trades = new ArrayList<>();
+        int tradeId = tradeCounter;
+        boolean marketOrderBuys = marketOrder.getSide() == OrderSide.BUY;
+
+        while (!marketOrder.isFullyFilled() && !oppositeQueue.isEmpty()) {
+            LimitOrder resting = oppositeQueue.peek();
+            double matchedQty = Math.min(marketOrder.getRemainingQty(), resting.getRemainingQty());
+
+            trades.add(marketOrderBuys
+                    ? MatchingStrategy.executeTrade(tradeId++, marketOrder, resting, matchedQty, resting.getLimitPrice())
+                    : MatchingStrategy.executeTrade(tradeId++, resting, marketOrder, matchedQty, resting.getLimitPrice()));
+
+            if (resting.isFullyFilled()) {
+                oppositeQueue.poll();
+            }
+        }
+        return trades;
+    }
+
+    /** Rejects the order, logs why, and returns the empty trade list a rejection yields. */
+    private List<TradeRecord> rejectOrder(Order order, String reason) {
+        order.reject();
+        auditLog.log("ORDER_REJECTED", "Order " + order.getOrderId() + " " + reason);
+        return new ArrayList<>();
+    }
+
+    private static LimitOrder findInQueue(PriorityQueue<LimitOrder> queue, int orderId) {
+        for (LimitOrder candidate : queue) {
+            if (candidate.getOrderId() == orderId) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    /** Orders carry no market ID, so the market is the one registered for the order's asset type. */
+    private Market findMarket(Order order) {
         for (Market market : markets.values()) {
             if (market.getAssetType() == order.getAssetType()) {
-                return market.getMarketId();
+                return market;
             }
         }
         return null;
