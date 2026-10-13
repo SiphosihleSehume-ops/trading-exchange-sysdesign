@@ -9,14 +9,14 @@ import java.util.PriorityQueue;
 
 /**
  * Standard price-time priority matching: best price first, ties broken by earliest timestamp.
- * Execution price is always the resting sell order's limit price.
+ * Execution price is always the sell order's limit price.
  */
 public class PriceTimeMatchingStrategy implements MatchingStrategy {
 
     @Override
     public List<TradeRecord> match(PriorityQueue<LimitOrder> buyQueue,
-                                     PriorityQueue<LimitOrder> sellQueue,
-                                     int tradeIdStart) {
+                                   PriorityQueue<LimitOrder> sellQueue,
+                                   int tradeIdStart) {
         List<TradeRecord> trades = new ArrayList<>();
         int tradeId = tradeIdStart;
 
@@ -28,20 +28,14 @@ public class PriceTimeMatchingStrategy implements MatchingStrategy {
                 break;
             }
 
-            double executionPrice = bestSell.getLimitPrice();
             double matchedQty = Math.min(bestBuy.getRemainingQty(), bestSell.getRemainingQty());
+            trades.add(MatchingStrategy.executeTrade(tradeId++, bestBuy, bestSell,
+                    matchedQty, bestSell.getLimitPrice()));
 
-            bestBuy.fill(matchedQty);
-            bestSell.fill(matchedQty);
-
-            trades.add(new TradeRecord(tradeId, bestBuy.getOrderId(), bestSell.getOrderId(),
-                    bestBuy.getAssetType(), matchedQty, executionPrice));
-            tradeId++;
-
-            if (bestBuy.getRemainingQty() <= 1e-9) {
+            if (bestBuy.isFullyFilled()) {
                 buyQueue.poll();
             }
-            if (bestSell.getRemainingQty() <= 1e-9) {
+            if (bestSell.isFullyFilled()) {
                 sellQueue.poll();
             }
         }
