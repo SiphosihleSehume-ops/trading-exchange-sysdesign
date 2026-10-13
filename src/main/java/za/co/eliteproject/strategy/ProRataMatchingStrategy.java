@@ -1,122 +1,95 @@
 package za.co.eliteproject.strategy;
 
 import za.co.eliteproject.model.LimitOrder;
+import za.co.eliteproject.model.Order;
 import za.co.eliteproject.model.TradeRecord;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.PriorityQueue;
 
 /**
- * Pro-rata matching: when multiple sell orders are eligible against the best buy order,
- * the buy quantity is distributed proportionally across those sellers by their remaining size.
+ * Pro-rata matching: the best buy order is distributed across all eligible sell orders
+ * (limitPrice <= buy limitPrice) in proportion to their remaining quantities.
+ * Each seller receives floor(sellerRemaining / totalEligible * buyRemaining); any rounding
+ * remainder goes to the seller with the largest remaining quantity. Each trade executes at
+ * the seller's own limit price.
  */
 public class ProRataMatchingStrategy implements MatchingStrategy {
 
     @Override
     public List<TradeRecord> match(PriorityQueue<LimitOrder> buyQueue,
-                                     PriorityQueue<LimitOrder> sellQueue,
-                                     int tradeIdStart) {
+                                   PriorityQueue<LimitOrder> sellQueue,
+                                   int tradeIdStart) {
         List<TradeRecord> trades = new ArrayList<>();
         int tradeId = tradeIdStart;
 
         while (!buyQueue.isEmpty() && !sellQueue.isEmpty()) {
             LimitOrder bestBuy = buyQueue.peek();
 
-            // Collect all eligible sellers: limitPrice <= buy.limitPrice
-            List<LimitOrder> eligibleSellers = new ArrayList<>();
+            List<LimitOrder> eligible = new ArrayList<>();
+            double totalEligibleQty = 0.0;
             for (LimitOrder sell : sellQueue) {
                 if (sell.getLimitPrice() <= bestBuy.getLimitPrice()) {
-                    eligibleSellers.add(sell);
+                    eligible.add(sell);
+                    totalEligibleQty += sell.getRemainingQty();
                 }
             }
-
-            if (eligibleSellers.isEmpty()) {
+            if (eligible.isEmpty()) {
                 break;
             }
 
-            double totalEligibleQty = 0.0;
-            for (LimitOrder sell : eligibleSellers) {
-                totalEligibleQty += sell.getRemainingQty();
+            // Deterministic order (best price, then time) so remainder/ID allocation is stable.
+            eligible.sort(LimitOrder.SELL_PRIORITY);
+
+            LimitOrder largest = eligible.get(0);
+            for (LimitOrder sell : eligible) {
+                if (sell.getRemainingQty() > largest.getRemainingQty()) {
+                    largest = sell;
+                }
             }
 
             double buyRemaining = bestBuy.getRemainingQty();
+            double allocated = 0.0;
 
-            // Sort eligible sellers deterministically: best price first (lowest), then earliest timestamp,
-            // and track the largest remaining-quantity seller for remainder allocation.
-            eligibleSellers.sort(Comparator
-                    .comparingDouble(LimitOrder::getLimitPrice)
-                    .thenComparingLong(LimitOrder::getTimestamp));
-
-            LimitOrder largestSeller = eligibleSellers.get(0);
-            for (LimitOrder sell : eligibleSellers) {
-                if (sell.getRemainingQty() > largestSeller.getRemainingQty()) {
-                    largestSeller = sell;
+            for (LimitOrder sell : eligible) {
+                if (sell == largest) {
+                    continue; // receives the remainder below
+                }
+                // Multiply before dividing and nudge by epsilon so e.g. 10*30/30 floors to 10, not 9.
+                double share = Math.floor(sell.getRemainingQty() * buyRemaining / totalEligibleQty + Order.QTY_EPSILON);
+                double qty = Math.min(share, Math.min(sell.getRemainingQty(), buyRemaining - allocated));
+                if (qty > Order.QTY_EPSILON) {
+                    trades.add(executeLeg(tradeId++, bestBuy, sell, qty, sellQueue));
+                    allocated += qty;
                 }
             }
 
-            double allocatedTotal = 0.0;
-            List<LimitOrder> filledThisRound = new ArrayList<>();
-
-            for (LimitOrder sell : eligibleSellers) {
-                double proportion = sell.getRemainingQty() / totalEligibleQty;
-                double allocation = Math.floor(proportion * buyRemaining);
-
-                if (sell == largestSeller) {
-                    // remainder handled after loop
-                    continue;
-                }
-
-                if (allocation > 0) {
-                    double matchedQty = Math.min(allocation, Math.min(sell.getRemainingQty(), buyRemaining - allocatedTotal));
-                    if (matchedQty > 1e-9) {
-                        double executionPrice = sell.getLimitPrice();
-                        bestBuy.fill(matchedQty);
-                        sell.fill(matchedQty);
-                        trades.add(new TradeRecord(tradeId, bestBuy.getOrderId(), sell.getOrderId(),
-                                bestBuy.getAssetType(), matchedQty, executionPrice));
-                        tradeId++;
-                        allocatedTotal += matchedQty;
-                        if (sell.getRemainingQty() <= 1e-9) {
-                            filledThisRound.add(sell);
-                        }
-                    }
-                }
+            double remainder = Math.min(buyRemaining - allocated, largest.getRemainingQty());
+            if (remainder > Order.QTY_EPSILON) {
+                trades.add(executeLeg(tradeId++, bestBuy, largest, remainder, sellQueue));
+                allocated += remainder;
             }
 
-            // Remainder goes to the largest remaining-quantity seller
-            double remainder = Math.min(buyRemaining - allocatedTotal, largestSeller.getRemainingQty());
-            if (remainder > 1e-9) {
-                double executionPrice = largestSeller.getLimitPrice();
-                bestBuy.fill(remainder);
-                largestSeller.fill(remainder);
-                trades.add(new TradeRecord(tradeId, bestBuy.getOrderId(), largestSeller.getOrderId(),
-                        bestBuy.getAssetType(), remainder, executionPrice));
-                tradeId++;
-                allocatedTotal += remainder;
-                if (largestSeller.getRemainingQty() <= 1e-9) {
-                    filledThisRound.add(largestSeller);
-                }
-            }
-
-            // Remove fully filled sellers from the queue
-            for (LimitOrder filled : filledThisRound) {
-                sellQueue.remove(filled);
-            }
-
-            // Remove buy order if fully filled
-            if (bestBuy.getRemainingQty() <= 1e-9) {
+            if (bestBuy.isFullyFilled()) {
                 buyQueue.poll();
             }
 
-            // If nothing was allocated this round (e.g. buy fully filled at zero remaining, or no
-            // eligible seller had capacity), stop to avoid an infinite loop.
-            if (allocatedTotal <= 1e-9) {
-                break;
+            if (allocated <= Order.QTY_EPSILON) {
+                break; // nothing could be allocated; avoid looping forever
             }
         }
 
         return trades;
+    }
+
+    /** Executes one buyer/seller leg and drops the seller from the book once fully filled. */
+    private static TradeRecord executeLeg(int tradeId, LimitOrder buy, LimitOrder sell, double qty,
+                                      PriorityQueue<LimitOrder> sellQueue) {
+        TradeRecord trade = MatchingStrategy.executeTrade(tradeId, buy, sell, qty, sell.getLimitPrice());
+        if (sell.isFullyFilled()) {
+            sellQueue.remove(sell);
+        }
+        return trade;
     }
 }
