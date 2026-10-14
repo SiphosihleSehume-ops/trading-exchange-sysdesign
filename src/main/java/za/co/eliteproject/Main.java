@@ -37,6 +37,10 @@ public class Main {
         Market market = new Market("ELEC-ZA", AssetType.ELECTRICITY, 150.0);
         engine.registerMarket(market);
 
+        Trader buyer = new Trader(1, "buyer", new Portfolio(1, 500_000));
+        Trader seller = new Trader(2, "seller", new Portfolio(2, 10_000));
+        seller.getPortfolio().addAsset(AssetType.ELECTRICITY, 100, 120);
+
         engine.submitOrder(new LimitOrder(1, seller, AssetType.ELECTRICITY, OrderSide.SELL, 10, 150));
         List<TradeRecord> trades =
                 engine.submitOrder(new LimitOrder(2, buyer, AssetType.ELECTRICITY, OrderSide.BUY, 10, 155));
