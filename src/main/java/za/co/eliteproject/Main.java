@@ -37,5 +37,19 @@ public class Main {
         Market market = new Market("ELEC-ZA", AssetType.ELECTRICITY, 150.0);
         engine.registerMarket(market);
 
+        engine.submitOrder(new LimitOrder(1, seller, AssetType.ELECTRICITY, OrderSide.SELL, 10, 150));
+        List<TradeRecord> trades =
+                engine.submitOrder(new LimitOrder(2, buyer, AssetType.ELECTRICITY, OrderSide.BUY, 10, 155));
+        System.out.println("Trades: " + trades);
+
+        Settlement settlement = new Settlement(auditLog);
+        for (TradeRecord trade : trades) {
+            System.out.println("Settled " + trade.getTradeId() + ": " + settlement.settle(trade, buyer, seller));
+        }
+
+        CircuitBreaker breaker = new CircuitBreaker(market, 10.0);
+        breaker.check();
+        System.out.println(breaker);
+        System.out.println("Audit entries: " + auditLog.getTotalEntries());
     }
 }

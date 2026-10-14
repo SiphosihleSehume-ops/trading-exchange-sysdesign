@@ -12,11 +12,7 @@ import java.util.List;
  */
 public class RiskEngine {
 
-    private final List<RiskRule> rules;
-
-    public RiskEngine() {
-        this.rules = new ArrayList<>();
-    }
+    private final List<RiskRule> rules = new ArrayList<>();
 
     public void addRule(RiskRule rule) {
         if (rule == null) {
@@ -29,21 +25,12 @@ public class RiskEngine {
         return new ArrayList<>(rules);
     }
 
-    /**
-     * Runs all rules in order; returns false (and stops) on the first rule failure.
-     */
+    /** Runs all rules in order; returns false (and stops) on the first rule failure. */
     public boolean evaluate(Order order, Market market) {
-        for (RiskRule rule : rules) {
-            if (!rule.evaluate(order, market)) {
-                return false;
-            }
-        }
-        return true;
+        return getFailingRule(order, market) == null;
     }
 
-    /**
-     * @return the first rule that rejects the order, or null if all pass.
-     */
+    /** @return the first rule that rejects the order, or null if all pass. */
     public RiskRule getFailingRule(Order order, Market market) {
         for (RiskRule rule : rules) {
             if (!rule.evaluate(order, market)) {
