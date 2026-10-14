@@ -1,4 +1,4 @@
-package za.co.wethinkcode;
+package za.co.eliteproject;
 
 import org.junit.jupiter.api.*;
 import za.co.eliteproject.enums.*;

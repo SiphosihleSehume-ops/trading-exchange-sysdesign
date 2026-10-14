@@ -1,7 +1,5 @@
 package za.co.eliteproject;
 
-package za.co.wethinkcode;
-
 import org.junit.jupiter.api.*;
 import za.co.eliteproject.enums.*;
 import za.co.eliteproject.model.*;

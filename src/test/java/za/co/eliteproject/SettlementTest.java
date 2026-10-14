@@ -2,6 +2,12 @@ package za.co.eliteproject;
 
 import org.junit.jupiter.api.*;
 import za.co.eliteproject.enums.AssetType;
+import za.co.eliteproject.model.Asset;
+import za.co.eliteproject.model.Portfolio;
+import za.co.eliteproject.model.TradeRecord;
+import za.co.eliteproject.model.Trader;
+import za.co.eliteproject.service.AuditLog;
+import za.co.eliteproject.service.Settlement;
 
 import static org.junit.jupiter.api.Assertions.*;
 
